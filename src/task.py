@@ -10,6 +10,7 @@ from tkinter import messagebox, W, E, filedialog, HORIZONTAL
 INVALID_CHARS = [":", "\\", "|", "/", "?", "*", ">", "<"]
 LONG_PATH_PREFIX = "\\\\?\\"
 SLASH = "\\"
+# SLASH = "/"  # ubuntu
 DOCS_DONE = 0
 
 
