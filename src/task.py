@@ -53,9 +53,9 @@ def run_progress_bar():
     """
     th = threading.Thread(target=download_files)
     th.start()
-    while DOCS_DONE < docs_number - 1:
-        progress['value'] = (DOCS_DONE / docs_number) * 100
-        docs_label['text'] = 'Завантажено: {} з {}'.format(DOCS_DONE, docs_number)
+    while DOCS_DONE < DOCS_NUMBER - 1:
+        progress['value'] = (DOCS_DONE / DOCS_NUMBER) * 100
+        docs_label['text'] = 'Завантажено: {} з {}'.format(DOCS_DONE, DOCS_NUMBER)
         window.update()
         sleep(1)
     th.join()
@@ -219,7 +219,7 @@ def ok_button():
     global folder
     f_path = folder_path.get()
     f_path = LONG_PATH_PREFIX + f_path.replace("/", SLASH)
-    t_id = tender_id.get()
+    t_id = tender_id.get().strip(" ")
     if not os.path.exists(f_path):
         try:
             os.mkdir(f_path)
@@ -300,13 +300,14 @@ def keypress(event):
 if __name__ == '__main__':
 
     window = tk.Tk()
+    window.iconbitmap('favicon.ico')
     window.title("Вивантаження файлів")
     window.resizable(width=False, height=False)
 
     folder_path = tk.StringVar()
     folder = ""
     response_gl = ""
-    docs_number = 0
+    DOCS_NUMBER = 0
 
     try:
         with open('last_use_folder.txt', 'r') as file:
@@ -337,7 +338,7 @@ if __name__ == '__main__':
         ent.bind('<Key>', keypress)
 
     container2 = tk.Frame(window)
-    docs_label = tk.Label(master=container2, text='Завантажено: {} з {}'.format(DOCS_DONE, docs_number))
+    docs_label = tk.Label(master=container2, text='Завантажено: {} з {}'.format(DOCS_DONE, DOCS_NUMBER))
     docs_label.grid(row=0, column=1, sticky=W, pady=10, padx=10)
     progress = ttk.Progressbar(container2, orient=HORIZONTAL,
                                length=150, mode='determinate')
