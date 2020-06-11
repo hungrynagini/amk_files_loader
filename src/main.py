@@ -29,11 +29,9 @@ def run_checks(response):
             if 'documents' in bids[i].keys():
                 docs = bids[i]['documents']
                 docs_num = sum([1 for i in docs if i['title'] != 'sign.p7s'])
-                # print(docs_num, [i['title'] for i in docs if i['title'] != 'sign.p7s'])
                 if docs_num > 0:
                     no_docs = False
                     docs_number += docs_num
-        # print(docs_number)
         if no_docs:
             messagebox.showinfo("Відсутні файли", "У тендері відсутні файли пропозиції.")
             remove_folder(folder)

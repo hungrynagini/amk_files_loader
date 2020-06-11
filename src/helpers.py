@@ -68,7 +68,7 @@ def pdf_metadata(filepath, filename, worksheet, row):
 
     try:
         with open(filepath + filename, "rb") as f:
-            pdf_toread = PdfFileReader(f, strict=False)
+            pdf_toread = PdfFileReader(f) #, strict=False)
             pdf_info = pdf_toread.getDocumentInfo()
             for prop, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
                '/Producer', "/Creator", '/Version', '/Keywords'], [2, 3, 4, 5, 6, 8, 9, 10, 11]):
@@ -77,7 +77,6 @@ def pdf_metadata(filepath, filename, worksheet, row):
                         to_write = pdf_info[prop].decode('unicode_escape')
                     except:
                         to_write = pdf_info[prop]
-                    # print(to_write)
                     if index not in [5, 6]:
                         worksheet.write(row, index, to_write)
                     else:
@@ -90,13 +89,16 @@ def pdf_metadata(filepath, filename, worksheet, row):
             pdf_version = read_file[1:8].decode()
             if magic_val == '%PDF':
                 worksheet.write(row, 10, pdf_version)
-    except:
-        exc = "pdf failed"
+    except Exception as e:
+        print("pdf failed", filename, e)
     try:
-        pdf_info = pdf_toread.getXmpMetadata()
-        worksheet.write(row, 11, pdf_info.pdf_keywords)
+        with open(filepath + filename, "rb") as f:
+            pdf_toread = PdfFileReader(f, strict=False)
+            pdf_info = pdf_toread.getXmpMetadata()
+            # worksheet.write(row, 11, pdf_info.pdf_keywords)
+            print(pdf_info, filename)
     except:
-        exc = "xmp failed"
+        print("xmp failed")
 
 
 functions = {
