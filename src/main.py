@@ -101,7 +101,7 @@ def download_files(response):
                 save_m = save_meta.get()
                 if save_m:
                     index = ''.join(choice(ascii_letters + digits) for _ in range(10))
-                    workbook = Workbook(f'{folder}{SLASH}Атрибути файлів пропозиції {index}.xlsx')
+                    workbook = Workbook(f'{folder}{SLASH}Значення атрибутів файлів пропозиції {index}.xlsx')
                     worksheet = workbook.add_worksheet()
                     worksheet.write_row(0, 0, METADATA)
                 if lots:
@@ -163,7 +163,7 @@ def download_files(response):
                                                 er+er2)
                 if save_m:
                     workbook.close()
-                    filenames = list(set(filenames + [f'Атрибути файлів пропозиції {index}.xlsx']))
+                    filenames = list(set(filenames + [f'Значення атрибутів файлів пропозиції {index}.xlsx']))
                 for lot in lot_paths:
                     participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
                     # print(lot + str(i) + " " + participant)
