@@ -73,12 +73,17 @@ def pdf_metadata(filepath, filename, worksheet, row):
             for prop, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
                '/Producer', "/Creator", '/Version', '/Keywords'], [2, 3, 4, 5, 6, 8, 9, 10, 11]):
                 try:
+                    try:
+                        to_write = pdf_info[prop].decode('unicode_escape')
+                    except:
+                        to_write = pdf_info[prop]
+                    # print(to_write)
                     if index not in [5, 6]:
-                        worksheet.write(row, index, pdf_info[prop])
+                        worksheet.write(row, index, to_write)
                     else:
-                        worksheet.write(row, index, format_date(pdf_info[prop]))
-                except:
-                    continue
+                        worksheet.write(row, index, format_date(to_write))
+                except Exception as e:
+                    exc = e
         with open(filepath + filename, "rb") as f:
             read_file = f.read(10)
             magic_val = read_file[0:4].decode()
@@ -86,12 +91,12 @@ def pdf_metadata(filepath, filename, worksheet, row):
             if magic_val == '%PDF':
                 worksheet.write(row, 10, pdf_version)
     except:
-        print("pdf failed")
-    # try:
-    #     pdf_info = pdf_toread.getXmpMetadata()
-    #     worksheet.write(row, 11, pdf_info.pdf_keywords)
-    # except:
-    #     return
+        exc = "pdf failed"
+    try:
+        pdf_info = pdf_toread.getXmpMetadata()
+        worksheet.write(row, 11, pdf_info.pdf_keywords)
+    except:
+        exc = "xmp failed"
 
 
 functions = {
@@ -119,7 +124,10 @@ def write_metadata(fpath, fname, worksheet, row):
     ext = str(os.path.splitext(fname)[1]).lower()
     if ext == '':
         os.rename(f'{fpath}{fname}', f'{fpath}{fname}.zip')
-        extract_archive(f'{fpath}{fname}.zip', outdir=f'.{SLASH}.tmp', verbosity=-1)
+        try:
+            extract_archive(f'{fpath}{fname}.zip', outdir=f'.{SLASH}.tmp', verbosity=-1)
+        except:
+            archive = False
         os.rename(f'{fpath}{fname}.zip', f'{fpath}{fname}')
     # elif ext == '.zip':
     #     extract_archive(f'{fpath}{fname}', outdir=f'.{SLASH}.tmp', program='py_zipfile', verbosity=-1)
