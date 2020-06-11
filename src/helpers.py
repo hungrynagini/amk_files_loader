@@ -1,15 +1,35 @@
 import os
+from config import SLASH
 # from unrar import rarfile
 from patoolib import extract_archive
 from shutil import rmtree, copyfile
+from time import sleep
 import xml.etree.ElementTree as ET
 from PyPDF2 import PdfFileReader
+
+
+def remove_folder(folder_path):
+    """
+    Removes all contents of folder
+    :param folder_path: path to folder to remove
+    :return:
+    """
+    for root, dirs, files in os.walk(folder_path, topdown=False):
+        for name in files:
+            try:
+                os.remove(os.path.join(root, name))
+            except:
+                sleep(1)
+                os.remove(os.path.join(root, name))
+        for name in dirs:
+            os.rmdir(os.path.join(root, name))
+    os.rmdir(folder_path)
 
 
 def doc_metadata(filepath, filename, worksheet, row):
     """
     Extracts metadata from doc files using core.xml and app.xml files of doc file
-    (which appear in folder \\docProps after unzipping the file).
+    (which appear in folder {SLASH}docProps after unzipping the file).
     :param filepath: path to file
     :param filename: name of file
     :param worksheet: worksheet object of created xlsx file
@@ -17,16 +37,16 @@ def doc_metadata(filepath, filename, worksheet, row):
     :return:
     """
     os.rename(f'{filepath}{filename}', f'{filepath}{filename}.zip')
-    extract_archive(f'{filepath}{filename}.zip', outdir='\\.doc_unzipped', program='py_zipfile', verbosity=-1)
+    extract_archive(f'{filepath}{filename}.zip', outdir=f'.{SLASH}.doc_unzipped', program='py_zipfile', verbosity=-1)
     for file, propers, indexes in zip(['core.xml', 'app.xml'], [['title', 'creator', 'subject',
              'created', 'modified', 'lastModifiedBy'], ['Manager', 'Company']], [[2, 3, 4, 5, 6, 7], [12, 13]]):
-        tree = ET.parse(f"\\.doc_unzipped\\docProps\\{file}")
+        tree = ET.parse(f".{SLASH}.doc_unzipped{SLASH}docProps{SLASH}{file}")
         root = tree.getroot()
         for child in root:
             for prop, index in zip(propers, indexes):
                 if prop in child.tag:
                     worksheet.write(row, index, child.text)
-    rmtree('\\.doc_unzipped')
+    remove_folder(f'.{SLASH}.doc_unzipped')
     os.rename(f'{filepath}{filename}.zip', f'{filepath}{filename}')
 
 
@@ -93,18 +113,21 @@ def write_metadata(fpath, fname, worksheet, row):
     :param row: row number in worksheet for current file
     :return: row number for next file
     """
-    if not os.path.exists('\\.tmp'):
-        os.mkdir('\\.tmp')
+    if not os.path.exists(f'.{SLASH}.tmp'):
+        os.mkdir(f'.{SLASH}.tmp')
     archive = True
     ext = str(os.path.splitext(fname)[1]).lower()
-    if ext in ['.zip', '.zipx']:
-        extract_archive(f'{fpath}{fname}', outdir='\\.tmp', program='py_zipfile', verbosity=-1)
-    if ext == '.rar':
-        # rarfile.RarFile(f'{fpath}{fname}').extractall('\\tmp')
-        extract_archive(f'{fpath}{fname}', outdir='\\.tmp', program='rar', verbosity=-1)
-    elif ext in ['.a', '.ar', '.lzma', '.7z']:
+    if ext == '':
+        os.rename(f'{fpath}{fname}', f'{fpath}{fname}.zip')
+        extract_archive(f'{fpath}{fname}.zip', outdir=f'.{SLASH}.tmp', verbosity=-1)
+        os.rename(f'{fpath}{fname}.zip', f'{fpath}{fname}')
+    # elif ext == '.zip':
+    #     extract_archive(f'{fpath}{fname}', outdir=f'.{SLASH}.tmp', program='py_zipfile', verbosity=-1)
+    # elif ext == '.rar':
+        # rarfile.RarFile(f'{fpath}{fname}').extractall(f'.{SLASH}.tmp')
+    elif ext[:4] not in ['.pdf', '.doc', '.jpg', '.png', '.jpe', '.txt', '.htm', '.csv', '.xls', '.ppt']:
         try:
-            extract_archive(f'{fpath}{fname}', outdir='\\.tmp', verbosity=-1)
+            extract_archive(f'{fpath}{fname}', outdir=f'.{SLASH}.tmp', verbosity=-1)
         except:
             archive = False
     else:
@@ -113,10 +136,10 @@ def write_metadata(fpath, fname, worksheet, row):
     if not archive:
         filenames = [fname]
         paths = [fpath]
-    for root, dirs, files in os.walk('\\.tmp', topdown=False):
+    for root, dirs, files in os.walk(f'.{SLASH}.tmp', topdown=False):
         for name in files:
             filenames.append(name)
-            paths.append(root+"\\")
+            paths.append(f"{root}{SLASH}")
     for filename, filepath in zip(filenames, paths):
         file_extension = str(os.path.splitext(filename)[1]).lower()
         if file_extension in ['.pdf', '.doc', '.docx']:

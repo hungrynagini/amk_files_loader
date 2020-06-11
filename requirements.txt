@@ -1,0 +1,6 @@
+patoolib
+PyPDF2
+requests
+tkinter
+xlsxwriter
+xml

@@ -33,11 +33,11 @@ def run_checks(response):
                     docs_number += docs_num
         if no_docs:
             messagebox.showinfo("Відсутні файли", "У тендері відсутні файли пропозиції.")
-            rmtree(folder, ignore_errors=True)
+            remove_folder(folder)
             return False
     else:
         messagebox.showinfo("Відсутні пропозиції", "У тендері відсутні пропозиції.")
-        rmtree(folder, ignore_errors=True)
+        remove_folder(folder)
         return False
     return True
 
@@ -51,14 +51,15 @@ def run_progress_bar(response):
     docs_done = 0
     th = Thread(target=lambda: download_files(response))
     th.start()
-    while docs_done < docs_number - 1:
+    while docs_done < docs_number + 1:
         progress['value'] = (docs_done / docs_number) * 100
         docs_label['text'] = 'Завантажено: {} з {}'.format(docs_done, docs_number)
         window.update()
         sleep(1)
-    docs_label['text'] = 'Завершення роботи'
-    window.update()
-    sleep(1)
+    while docs_done < docs_number + 2:
+        docs_label['text'] = 'Завершення роботи ...'
+        window.update()
+        sleep(1)
     th.join()
     window.destroy()
 
@@ -97,9 +98,10 @@ def download_files(response):
         for i in bids_with_docs:
             if bids[i]['status'] != 'invalid':
                 lot_paths = []
-                if save_meta:
+                save_m = save_meta.get()
+                if save_m:
                     index = ''.join(choice(ascii_letters + digits) for _ in range(10))
-                    workbook = Workbook(f'{folder}{SLASH}Значення атрибутів файлів пропозиції {index}.xlsx')
+                    workbook = Workbook(f'{folder}{SLASH}Атрибути файлів пропозиції {index}.xlsx')
                     worksheet = workbook.add_worksheet()
                     worksheet.write_row(0, 0, METADATA)
                 if lots:
@@ -138,26 +140,30 @@ def download_files(response):
                     for rep in INVALID_CHARS:
                         filename = filename.replace(rep, "_")
                     filename = filename.replace("\"", "'")
-                    # print(docs_done, filename)
-                    if filename != "sign.p7s":
+                    # docs_done += 1
+                    if filename != "sign.p7s": #and (filename.endswith('zip') or filename.endswith("rar")):
                         docs_done += 1
                         filenames.append(filename)
                         if filenames.count(filename) > 1:
                             filename = str(filenames.count(filename) - 1) + " " + filename
                             filenames.append(filename)
+                        er = 'error getting request from url'
+                        er2 = '\n Папка може містити неповну інформацію.'
                         try:
                             r = requests_get(doc['url'], allow_redirects=True)
                             with open(f'{folder}{SLASH}{filename}', 'wb') as file_:
                                 file_.write(r.content)
-                            if save_meta:
+                            er = "error fetching metadata"
+                            if save_m:
                                 row = write_metadata(f'{folder}{SLASH}', filename, worksheet, row)
-                                rmtree('\\.tmp')
-                        except EnvironmentError as er:
+                                er = 'error deleting temporary files'
+                                remove_folder(f'.{SLASH}.tmp')
+                        except:
                             messagebox.showinfo("Виникла помилка",
-                                                er)
-                if save_meta:
+                                                er+er2)
+                if save_m:
                     workbook.close()
-                    filenames = list(set(filenames + [f'Значення атрибутів файлів пропозиції {index}.xlsx']))
+                    filenames = list(set(filenames + [f'Атрибути файлів пропозиції {index}.xlsx']))
                 for lot in lot_paths:
                     participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
                     # print(lot + str(i) + " " + participant)
@@ -165,9 +171,16 @@ def download_files(response):
                         os.mkdir(participant_path)  # folder of bidder inside lot
                     for filename in filenames:
                         copyfile(f'{folder}{SLASH}{filename}', f'{participant_path}{filename}')
+                # sleep(1)
+                docs_done += 1
                 for filename in filenames:
                     if filename != "sign.p7s":
-                        os.remove(f'{folder}{SLASH}{filename}')
+                        try:
+                            os.remove(f'{folder}{SLASH}{filename}')
+                        except:
+                            sleep(2)
+                            os.remove(f'{folder}{SLASH}{filename}')
+                docs_done += 1
 
         if lots:
             lots_all = [os.path.join(folder, o) + SLASH for o in os.listdir(folder)
@@ -270,7 +283,6 @@ def yes_button(top, response):
     for root, dirs, files in os.walk(folder, topdown=False):
         for name in files:
             os.remove(os.path.join(root, name))
-
         for name in dirs:
             os.rmdir(os.path.join(root, name))
     run_progress_bar(response)
