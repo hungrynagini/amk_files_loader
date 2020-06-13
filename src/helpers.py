@@ -1,12 +1,9 @@
-import os, io
-import re
-from pdf_metadata import BinaryPdfForensics, binary_string
+import os
 from config import SLASH
 # from unrar import rarfile
 from patoolib import extract_archive
 from shutil import rmtree, copyfile
 from time import sleep
-import traceback
 import xml.etree.ElementTree as ET
 from PyPDF2 import PdfFileReader
 
@@ -63,53 +60,44 @@ def pdf_metadata(filepath, filename, worksheet, row):
     :return:
     """
 
-    def format_date(dates):
-        for x in dates:
-            if x[:2] == 'D:':
-                yield f'{x[2:6]}-{x[6:8]}-{x[8:10]} {x[10:12]}:{x[12:14]}:{x[14:16]} {x[16:22]}'
-            else:
-                yield x
+    def format_date(x):
+        if x:
+            return f'{x[2:6]}-{x[6:8]}-{x[8:10]} {x[10:12]}:{x[12:14]}:{x[14:16]} {x[16:22]}'
+        else:
+            return ''
 
     try:
-        if filename[:9] == 'Відомості':
-            pdf = BinaryPdfForensics(filepath+filename, '')
-            version = pdf.pdf_magic()[1]
-            worksheet.write(row, 10, version)
-            objs = ','.join(set([binary_string(i) for i in pdf.get_info_obj()[1].values()]))
-            try:
-                objs_dict = pdf.get_info_obj() #[1].values()
-                xmps_dict = pdf.get_xmp_obj() #[1].values()
-                print(objs_dict[0], xmps_dict[0], objs_dict[1], xmps_dict[1])
-                objs_decoded = ','.join(set([i.decode().replace(r'\000', '') for i in objs_dict[1].values()]))
-            except UnicodeDecodeError:
-                objs_decoded = ''
-            xmps = ','.join(set([binary_string(i) for i in xmps_dict[1].values()]))
-            if filename[:9] == 'Відомості':
-                with open(filepath+filename, 'rb') as f:
-                    print(f.read().decode(errors='ignore'))
-                print(filename)
-                print(objs_decoded)
-                print(objs)
-                print(xmps)
-            for prop_xref, prop_xmp, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
-               '/Producer', "/Creator", '/Keywords'], ['Title', 'Author', 'Subject', 'CreateDate', 'ModifyDate',
-               'Producer', 'CreatorTool', 'Keywords'], [2, 3, 4, 5, 6, 8, 9, 11]):
+        with open(filepath + filename, "rb") as f:
+            pdf_toread = PdfFileReader(f, strict=False)
+            pdf_info = pdf_toread.getDocumentInfo()
+            for prop, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
+               '/Producer', "/Creator", '/Version', '/Keywords'], [2, 3, 4, 5, 6, 8, 9, 10, 11]):
                 try:
-                    regexref = fr'(?<={prop_xref})\s*\([^()]+(?=\))'
-                    regexmp = fr'(?<={prop_xmp}>)[^</]+(?=</)'
-                    # match_ = re.match(regexref, f'{prop_xref}\s*(hjd)')
-                    # print(match_)
-                    to_write = set(re.findall(regexref, f'{objs} {objs_decoded}')).union(set(re.findall(regexmp, xmps)))
-                    to_write = [i.strip().strip("(") for i in to_write]
-                    if filename[:9] == 'Відомості' and to_write: print(''.join(to_write))
+                    try:
+                        to_write = pdf_info[prop].decode('unicode_escape')
+                    except:
+                        to_write = pdf_info[prop]
+                    # print(to_write)
                     if index not in [5, 6]:
-                        worksheet.write(row, index, ''.join(to_write))
+                        worksheet.write(row, index, to_write)
                     else:
-                        worksheet.write(row, index, ''.join(list(format_date(to_write))))
+                        worksheet.write(row, index, format_date(to_write))
                 except Exception as e:
                     exc = e
-    except Exception as e:
-        print(e, traceback.print_exc())
+        with open(filepath + filename, "rb") as f:
+            read_file = f.read(10)
+            magic_val = read_file[0:4].decode()
+            pdf_version = read_file[1:8].decode()
+            if magic_val == '%PDF':
+                worksheet.write(row, 10, pdf_version)
+    except:
+        exc = "pdf failed"
+    try:
+        pdf_info = pdf_toread.getXmpMetadata()
+        worksheet.write(row, 11, pdf_info.pdf_keywords)
+    except:
+        exc = "xmp failed"
+
 
 functions = {
         '.pdf': pdf_metadata,
