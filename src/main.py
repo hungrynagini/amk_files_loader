@@ -143,9 +143,7 @@ def download_files(response):
                         for rep in INVALID_CHARS:
                             filename = filename.replace(rep, "_")
                         filename = filename.replace("\"", "'")
-                        # docs_done += 1
                         if filename != "sign.p7s": #and (filename.endswith('zip') or filename.endswith("rar")):
-                            # print(filename)
                             docs_done += 1
                             filenames.append(filename)
                             if filenames.count(filename) > 1:
@@ -170,12 +168,10 @@ def download_files(response):
                         filenames = list(set(filenames + [f'Значення атрибутів файлів пропозиції {index}.xlsx']))
                     for lot in lot_paths:
                         participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
-                        # print(lot + str(i) + " " + participant)
                         if not os.path.exists(participant_path):
                             os.mkdir(participant_path)  # folder of bidder inside lot
                         for filename in filenames:
                             copyfile(f'{folder}{SLASH}{filename}', f'{participant_path}{filename}')
-                    # sleep(1)
                     for filename in filenames:
                         if filename != "sign.p7s":
                             try:
