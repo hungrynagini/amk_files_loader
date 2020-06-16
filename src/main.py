@@ -194,7 +194,7 @@ def download_files(response):
                         os.rmdir(i)
 
     except Exception as e:
-        print(e, traceback.print_exc())
+        print(e)
         messagebox.showinfo("Помилка", e)
 
 

@@ -1,5 +1,6 @@
 from helpers import *
 import traceback
+from tempfile import TemporaryDirectory
 from config import *
 from threading import Thread
 from time import sleep
@@ -65,6 +66,118 @@ def run_progress_bar(response):
     window.destroy()
 
 
+def append_file(doc, filenames, filename, old_files):
+    for rep in INVALID_CHARS:
+        filename = filename.replace(rep, "_")
+    filename = filename.replace("\"", "'")
+    if doc['datePublished'][:19] != doc['dateModified'][:19]:
+        old_files = True
+        filename = [f'Видалені{SLASH}', filename]
+    else:
+        filename = [f'Актуальні{SLASH}', filename]
+    # filenames.append(filename)
+    if filenames.count(filename):
+        filename[1] = str(filenames.count(filename) - 1) + " " + filename[1]
+    filenames.append(filename)
+    return old_files, filename
+
+
+def bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_list):
+    global docs_done
+    if bids[i]['status'] != 'invalid':
+        lot_paths = []
+        if save_m:
+            index = ''.join(choice(ascii_letters + digits) for _ in range(10))
+            csvname = f'Значення атрибутів файлів пропозиції {index}.xlsx'
+            workbook = Workbook(f'{tmpdirname}{SLASH}{csvname}')
+            worksheet = workbook.add_worksheet()
+            worksheet.write_row(0, 0, METADATA)
+        if lots:
+            bid_lot_ids = bids[i]['lotValues']
+            for lot in bid_lot_ids:
+                lot_id = lot['relatedLot']
+                lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
+                for rep in INVALID_CHARS:
+                    lot = lot.replace(rep, "_")
+                lot = lot.replace("\"", "'") + SLASH
+                nonempty_lots.append(f'{folder}{SLASH}{lot}')
+                lot_paths.append(lot)
+        else:
+            lot_paths.append("")
+
+        # participant = f'{bids[i]["tenderers"][0]["name"]} {bids[i]["tenderers"][0]["identifier"]["id"]}'
+        participant = bids[i]["tenderers"][0]["identifier"]["id"]
+        # for rep in INVALID_CHARS:
+        #     participant = participant.replace(rep, "_")
+        # participant = participant.replace("\"", "'")
+        if 'documents' in bids[i].keys():
+            docs = bids[i]['documents']
+        else:
+            docs = []
+        filenames = []
+        row = 0
+        old_files = False
+        for doc in docs:
+            if STOP_EXECUTION:
+                for root, dirs, files in os.walk(folder, topdown=False):
+                    for name in files:
+                        os.remove(os.path.join(root, name))
+                    for name in dirs:
+                        os.rmdir(os.path.join(root, name))
+                os.rmdir(folder)
+                return False
+            filename = doc['title']
+            if doc['datePublished'][:19] != doc['dateModified'][:19]:
+                print(filename)
+            # for rep in INVALID_CHARS:
+            #     filename = filename.replace(rep, "_")
+            # filename = filename.replace("\"", "'")
+            if filename != "sign.p7s":
+                docs_done += 1
+                # print(' BEF ', tmpdirname, filename[0], filename[1])
+                old_files, filename = append_file(doc, filenames, filename, old_files)
+                # print(" AFT ", tmpdirname, filename[0], filenames[1])
+                er = 'error getting request from url'
+                er2 = '\n Папка може містити неповну інформацію.'
+                # try:
+                r = requests_get(doc['url'], allow_redirects=True)
+                print('written to', f'{tmpdirname}{SLASH}{filename[0]}{filename[1]}')
+                with open(f'{tmpdirname}{SLASH}{filename[0]}{filename[1]}', 'wb') as file_:
+                    file_.write(r.content)
+                er = "error fetching metadata"
+                if save_m:
+                    row = write_metadata(f'{tmpdirname}{SLASH}{filename[0]}', filename[1], worksheet,
+                                         row)
+                    er = 'error deleting temporary files'
+                    remove_folder(f'{tmpdirname}{SLASH}{filename[0]}tmp')
+                # except:
+                #     messagebox.showinfo("Виникла помилка",
+                #                         er+er2)
+        if save_m:
+            workbook.close()
+        for lot in lot_paths:
+            participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
+            if not os.path.exists(participant_path):
+                os.mkdir(participant_path)  # folder of bidder inside lot
+                os.mkdir(f'{participant_path}Актуальні{SLASH}')
+                if old_files:
+                    os.mkdir(f'{participant_path}Видалені{SLASH}')
+            for filename in filenames:
+                print('moved from', f'{tmpdirname}{SLASH}{filename[0]}{filename[1]}')
+                copyfile(f'{tmpdirname}{SLASH}{filename[0]}{filename[1]}',
+                         f'{participant_path}{filename[0]}{filename[1]}')
+            copyfile(f'{tmpdirname}{SLASH}{csvname}', f'{participant_path}{csvname}')
+        # for filename in os.listdir(folder):
+        #     os.remove(f'{folder}{SLASH}{filename}')
+        # for filename in filenames:
+        #     if filename != "sign.p7s":
+        #         try:
+        #             os.remove(f'{folder}{SLASH}{filename[1]}')
+        #         except:
+        #             sleep(2)
+        #             os.remove(f'{folder}{SLASH}{filename[1]}')
+
+
 def download_files(response):
     """"
     Downloads the files of the tender using Prozorro API.
@@ -97,95 +210,110 @@ def download_files(response):
                     if False in [i['title'] == 'sign.p7s' for i in docs]:
                         bids_with_docs.append(i)
             save_m = save_meta.get()
-            for i in bids_with_docs:
-                if bids[i]['status'] != 'invalid':
-                    lot_paths = []
-                    if save_m:
-                        index = ''.join(choice(ascii_letters + digits) for _ in range(10))
-                        workbook = Workbook(f'{folder}{SLASH}Значення атрибутів файлів пропозиції {index}.xlsx')
-                        worksheet = workbook.add_worksheet()
-                        worksheet.write_row(0, 0, METADATA)
-                    if lots:
-                        bid_lot_ids = bids[i]['lotValues']
-                        for lot in bid_lot_ids:
-                            lot_id = lot['relatedLot']
-                            lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
-                            for rep in INVALID_CHARS:
-                                lot = lot.replace(rep, "_")
-                            lot = lot.replace("\"", "'") + SLASH
-                            nonempty_lots.append(folder + SLASH + lot)
-                            lot_paths.append(lot)
-                    else:
-                        lot_paths.append("")
-
-                    # participant = f'{bids[i]["tenderers"][0]["name"]} {bids[i]["tenderers"][0]["identifier"]["id"]}'
-                    participant = bids[i]["tenderers"][0]["identifier"]["id"]
-                    # for rep in INVALID_CHARS:
-                    #     participant = participant.replace(rep, "_")
-                    # participant = participant.replace("\"", "'")
-                    if 'documents' in bids[i].keys():
-                        docs = bids[i]['documents']
-                    else:
-                        docs = []
-                    filenames = []
-                    row = 0
-                    # print(participant)
-                    for doc in docs:
-                        if STOP_EXECUTION:
-                            for root, dirs, files in os.walk(folder, topdown=False):
-                                for name in files:
-                                    os.remove(os.path.join(root, name))
-                                for name in dirs:
-                                    os.rmdir(os.path.join(root, name))
-                            os.rmdir(folder)
-                            return False
-                        filename = doc['title']
-                        for rep in INVALID_CHARS:
-                            filename = filename.replace(rep, "_")
-                        filename = filename.replace("\"", "'")
-                        if filename != "sign.p7s": #and (filename.endswith('zip') or filename.endswith("rar")):
-                            docs_done += 1
-                            filenames.append(filename)
-                            if filenames.count(filename) > 1:
-                                filename = str(filenames.count(filename) - 1) + " " + filename
-                                filenames.append(filename)
-                            er = 'error getting request from url'
-                            er2 = '\n Папка може містити неповну інформацію.'
-                            # try:
-                            r = requests_get(doc['url'], allow_redirects=True)
-                            with open(f'{folder}{SLASH}{filename}', 'wb') as file_:
-                                file_.write(r.content)
-                            er = "error fetching metadata"
-                            if save_m:
-                                row = write_metadata(f'{folder}{SLASH}', filename, worksheet, row)
-                                er = 'error deleting temporary files'
-                                remove_folder(f'.{SLASH}.tmp')
-                            # except:
-                            #     messagebox.showinfo("Виникла помилка",
-                            #                         er+er2)
-                    if save_m:
-                        workbook.close()
-                        filenames = list(set(filenames + [f'Значення атрибутів файлів пропозиції {index}.xlsx']))
-                    for lot in lot_paths:
-                        participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
-                        if not os.path.exists(participant_path):
-                            os.mkdir(participant_path)  # folder of bidder inside lot
-                        for filename in filenames:
-                            copyfile(f'{folder}{SLASH}{filename}', f'{participant_path}{filename}')
-                    for filename in filenames:
-                        if filename != "sign.p7s":
-                            try:
-                                os.remove(f'{folder}{SLASH}{filename}')
-                            except:
-                                sleep(2)
-                                os.remove(f'{folder}{SLASH}{filename}')
-            docs_done += 1
-            if lots:
-                lots_all = [os.path.join(folder, o) + SLASH for o in os.listdir(folder)
-                            if os.path.isdir(os.path.join(folder, o))]
-                for i in lots_all:
-                    if i not in nonempty_lots:
-                        os.rmdir(i)
+            with TemporaryDirectory(dir=folder) as tmpdirname:
+                print('created temporary directory', tmpdirname)
+                os.mkdir(f'{tmpdirname}{SLASH}Актуальні')
+                os.mkdir(f'{tmpdirname}{SLASH}Видалені')
+                for i in bids_with_docs:
+                    print(' bef ', nonempty_lots, ' BEF')
+                    bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_list)
+                    print(' aft ', nonempty_lots, ' AFT')
+                #     if bids[i]['status'] != 'invalid':
+                #         lot_paths = []
+                #         if save_m:
+                #             index = ''.join(choice(ascii_letters + digits) for _ in range(10))
+                #             csvname = f'Значення атрибутів файлів пропозиції {index}.xlsx'
+                #             workbook = Workbook(f'{folder}{SLASH}{tmpdirname}{SLASH}{csvname}')
+                #             worksheet = workbook.add_worksheet()
+                #             worksheet.write_row(0, 0, METADATA)
+                #         if lots:
+                #             bid_lot_ids = bids[i]['lotValues']
+                #             for lot in bid_lot_ids:
+                #                 lot_id = lot['relatedLot']
+                #                 lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
+                #                 for rep in INVALID_CHARS:
+                #                     lot = lot.replace(rep, "_")
+                #                 lot = lot.replace("\"", "'") + SLASH
+                #                 nonempty_lots.append(f'{folder}{SLASH}{lot}')
+                #                 lot_paths.append(lot)
+                #         else:
+                #             lot_paths.append("")
+                #
+                #         # participant = f'{bids[i]["tenderers"][0]["name"]} {bids[i]["tenderers"][0]["identifier"]["id"]}'
+                #         participant = bids[i]["tenderers"][0]["identifier"]["id"]
+                #         # for rep in INVALID_CHARS:
+                #         #     participant = participant.replace(rep, "_")
+                #         # participant = participant.replace("\"", "'")
+                #         if 'documents' in bids[i].keys():
+                #             docs = bids[i]['documents']
+                #         else:
+                #             docs = []
+                #         filenames = []
+                #         row = 0
+                #         old_files = False
+                #         os.mkdir(f'{folder}{SLASH}{tmpdirname}{SLASH}Актуальні')
+                #         os.mkdir(f'{folder}{SLASH}{tmpdirname}{SLASH}Видалені')
+                #         for doc in docs:
+                #             if STOP_EXECUTION:
+                #                 for root, dirs, files in os.walk(folder, topdown=False):
+                #                     for name in files:
+                #                         os.remove(os.path.join(root, name))
+                #                     for name in dirs:
+                #                         os.rmdir(os.path.join(root, name))
+                #                 os.rmdir(folder)
+                #                 return False
+                #             filename = doc['title']
+                #             # for rep in INVALID_CHARS:
+                #             #     filename = filename.replace(rep, "_")
+                #             # filename = filename.replace("\"", "'")
+                #             if filename != "sign.p7s":
+                #                 docs_done += 1
+                #                 print(filename, filenames)
+                #                 old_files = append_file(doc, filenames, filename, old_files)
+                #                 print(filename, filenames)
+                #                 er = 'error getting request from url'
+                #                 er2 = '\n Папка може містити неповну інформацію.'
+                #                 # try:
+                #                 r = requests_get(doc['url'], allow_redirects=True)
+                #                 with open(f'{folder}{SLASH}{tmpdirname}{SLASH}{filename[0]}{filename[1]}', 'wb') as file_:
+                #                     file_.write(r.content)
+                #                 er = "error fetching metadata"
+                #                 if save_m:
+                #                     row = write_metadata(f'{folder}{SLASH}{tmpdirname}{SLASH}{filename[0]}', filename[1], worksheet, row)
+                #                     er = 'error deleting temporary files'
+                #                     remove_folder(f'{folder}{SLASH}{tmpdirname}{SLASH}{filename[0]}tmp')
+                #                 # except:
+                #                 #     messagebox.showinfo("Виникла помилка",
+                #                 #                         er+er2)
+                #         if save_m:
+                #             workbook.close()
+                #         for lot in lot_paths:
+                #             participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
+                #             if not os.path.exists(participant_path):
+                #                 os.mkdir(participant_path)  # folder of bidder inside lot
+                #                 os.mkdir(f'{participant_path}Актуальні{SLASH}')
+                #                 if old_files:
+                #                     os.mkdir(f'{participant_path}Видалені{SLASH}')
+                #             for filename in filenames:
+                #                 copyfile(f'{folder}{SLASH}{tmpdirname}{SLASH}{filename[0]}{filename[1]}',
+                #                          f'{participant_path}{filename[0]}{filename[1]}')
+                #             copyfile(f'{folder}{SLASH}{tmpdirname}{SLASH}{csvname}', f'{participant_path}{csvname}')
+                #         # for filename in os.listdir(folder):
+                #         #     os.remove(f'{folder}{SLASH}{filename}')
+                #         # for filename in filenames:
+                #         #     if filename != "sign.p7s":
+                #         #         try:
+                #         #             os.remove(f'{folder}{SLASH}{filename[1]}')
+                #         #         except:
+                #         #             sleep(2)
+                #         #             os.remove(f'{folder}{SLASH}{filename[1]}')
+                docs_done += 1
+                if lots:
+                    lots_all = [os.path.join(folder, o) + SLASH for o in os.listdir(folder)
+                                if os.path.isdir(os.path.join(folder, o))]
+                    for i in lots_all:
+                        if i not in nonempty_lots:
+                            os.rmdir(i)
 
     except Exception as e:
         print(e, traceback.print_exc())

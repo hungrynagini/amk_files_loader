@@ -1,8 +1,10 @@
 import os
-from config import SLASH
+from re import findall
+from config import *
 # from unrar import rarfile
 from patoolib import extract_archive
 from shutil import rmtree, copyfile
+from pdf_metadata import BinaryPdfForensics, binary_string
 from time import sleep
 import xml.etree.ElementTree as ET
 from PyPDF2 import PdfFileReader
@@ -37,15 +39,21 @@ def doc_metadata(filepath, filename, worksheet, row):
     :return:
     """
     os.rename(f'{filepath}{filename}', f'{filepath}{filename}.zip')
-    extract_archive(f'{filepath}{filename}.zip', outdir=f'.{SLASH}.doc_unzipped', program='py_zipfile', verbosity=-1)
+    extract_archive(f'{filepath}{filename}.zip', outdir=f'.{SLASH}.doc_unzipped', program='py_zipfile',
+                    verbosity=-1)
     for file, propers, indexes in zip(['core.xml', 'app.xml'], [['title', 'creator', 'subject',
-             'created', 'modified', 'lastModifiedBy'], ['Manager', 'Company']], [[2, 3, 4, 5, 6, 7], [12, 13]]):
-        tree = ET.parse(f".{SLASH}.doc_unzipped{SLASH}docProps{SLASH}{file}")
-        root = tree.getroot()
-        for child in root:
+         'created', 'modified', 'lastModifiedBy'],['Manager', 'Company']],
+                                      [[2, 3, 4, 5, 6, 7], [12, 13]]):
+        try:
+            tree = ET.parse(f".{SLASH}.doc_unzipped{SLASH}docProps{SLASH}{file}")
+            root = tree.getroot()
+            for child in root:
+                for prop, index in zip(propers, indexes):
+                    if prop in child.tag:
+                        worksheet.write(row, index, child.text)
+        except:
             for prop, index in zip(propers, indexes):
-                if prop in child.tag:
-                    worksheet.write(row, index, child.text)
+                worksheet.write(row, index, '-')
     remove_folder(f'.{SLASH}.doc_unzipped')
     os.rename(f'{filepath}{filename}.zip', f'{filepath}{filename}')
 
@@ -60,43 +68,54 @@ def pdf_metadata(filepath, filename, worksheet, row):
     :return:
     """
 
-    def format_date(x):
-        if x:
-            return f'{x[2:6]}-{x[6:8]}-{x[8:10]} {x[10:12]}:{x[12:14]}:{x[14:16]} {x[16:22]}'
-        else:
-            return ''
+    def format_date(dates):
+        for x in dates:
+            if x[:2] == 'D:':
+                yield f'{x[2:6]}-{x[6:8]}-{x[8:10]} {x[10:12]}:{x[12:14]}:{x[14:16]} {x[16:22]}'
+            else:
+                yield x
 
     try:
+        pdf = BinaryPdfForensics(filepath + filename, '')
+        version = pdf.pdf_magic()[1]
+        worksheet.write(row, 10, version)
+        objs_dict = pdf.get_info_obj()[1].values()
+        xmps_dict = pdf.get_xmp_obj()[1].values()
+        try:
+            objs_decoded = ','.join(set([i.decode().replace(r'\000', '') for i in objs_dict]))
+        except UnicodeDecodeError:
+            objs_decoded = ''
+        xmps = ','.join(set([binary_string(i) for i in xmps_dict]))
+        objs = ','.join(set([binary_string(i) for i in objs_dict]))
         with open(filepath + filename, "rb") as f:
             pdf_toread = PdfFileReader(f, strict=False)
             pdf_info = pdf_toread.getDocumentInfo()
-            for prop, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
-               '/Producer', "/Creator", '/Version', '/Keywords'], [2, 3, 4, 5, 6, 8, 9, 10, 11]):
+            for prop_xref, prop_xmp, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
+               '/Producer', "/Creator", '/Keywords'], ['Title', 'Author', 'Subject', 'CreateDate', 'ModifyDate',
+               'Producer', 'CreatorTool', 'Keywords'], [2, 3, 4, 5, 6, 8, 9, 11]):
                 try:
                     try:
-                        to_write = pdf_info[prop].decode('unicode_escape')
+                        to_write = [pdf_info[prop_xref].decode('unicode_escape')]
                     except:
-                        to_write = pdf_info[prop]
+                        to_write = [pdf_info[prop_xref]]
                     # print(to_write)
-                    if index not in [5, 6]:
-                        worksheet.write(row, index, to_write)
-                    else:
-                        worksheet.write(row, index, format_date(to_write))
                 except Exception as e:
-                    exc = e
-        with open(filepath + filename, "rb") as f:
-            read_file = f.read(10)
-            magic_val = read_file[0:4].decode()
-            pdf_version = read_file[1:8].decode()
-            if magic_val == '%PDF':
-                worksheet.write(row, 10, pdf_version)
-    except:
-        exc = "pdf failed"
-    try:
-        pdf_info = pdf_toread.getXmpMetadata()
-        worksheet.write(row, 11, pdf_info.pdf_keywords)
-    except:
-        exc = "xmp failed"
+                    to_write = []
+                # print("after pypdf", to_write)
+                if not to_write:
+                    regexref = fr'(?<={prop_xref})\s*\([^()]+(?=\))'
+                    regexmp = fr'(?<={prop_xmp}>)[^</]+(?=</)'
+                    to_write = set(findall(regexref, f'{objs} {objs_decoded}')).union(
+                        set(findall(regexmp, xmps)))
+                    to_write = [i.strip().strip("(") for i in to_write]
+                # print('after regex', to_write)
+                if not to_write: to_write = ['-']
+                if index not in [5, 6]:
+                    worksheet.write(row, index, ''.join(to_write))
+                else:
+                    worksheet.write(row, index, ''.join(list(format_date(to_write))))
+    except Exception as e:
+        print(e)
 
 
 functions = {

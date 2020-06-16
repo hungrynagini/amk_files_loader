@@ -43,12 +43,16 @@ def doc_metadata(filepath, filename, worksheet, row):
     extract_archive(f'{filepath}{filename}.zip', outdir=f'.{SLASH}.doc_unzipped', program='py_zipfile', verbosity=-1)
     for file, propers, indexes in zip(['core.xml', 'app.xml'], [['title', 'creator', 'subject',
              'created', 'modified', 'lastModifiedBy'], ['Manager', 'Company']], [[2, 3, 4, 5, 6, 7], [12, 13]]):
-        tree = ET.parse(f".{SLASH}.doc_unzipped{SLASH}docProps{SLASH}{file}")
-        root = tree.getroot()
-        for child in root:
+        try:
+            tree = ET.parse(f".{SLASH}.doc_unzipped{SLASH}docProps{SLASH}{file}")
+            root = tree.getroot()
+            for child in root:
+                for prop, index in zip(propers, indexes):
+                    if prop in child.tag:
+                        worksheet.write(row, index, child.text)
+        except:
             for prop, index in zip(propers, indexes):
-                if prop in child.tag:
-                    worksheet.write(row, index, child.text)
+                worksheet.write(row, index, '-')
     remove_folder(f'.{SLASH}.doc_unzipped')
     os.rename(f'{filepath}{filename}.zip', f'{filepath}{filename}')
 
@@ -71,45 +75,45 @@ def pdf_metadata(filepath, filename, worksheet, row):
                 yield x
 
     try:
-        if filename[:9] == 'Відомості':
-            pdf = BinaryPdfForensics(filepath+filename, '')
-            version = pdf.pdf_magic()[1]
-            worksheet.write(row, 10, version)
-            objs = ','.join(set([binary_string(i) for i in pdf.get_info_obj()[1].values()]))
-            try:
-                objs_dict = pdf.get_info_obj() #[1].values()
-                xmps_dict = pdf.get_xmp_obj() #[1].values()
-                print(objs_dict[0], xmps_dict[0], objs_dict[1], xmps_dict[1])
-                objs_decoded = ','.join(set([i.decode().replace(r'\000', '') for i in objs_dict[1].values()]))
-            except UnicodeDecodeError:
-                objs_decoded = ''
-            xmps = ','.join(set([binary_string(i) for i in xmps_dict[1].values()]))
-            if filename[:9] == 'Відомості':
-                with open(filepath+filename, 'rb') as f:
-                    print(f.read().decode(errors='ignore'))
-                print(filename)
-                print(objs_decoded)
-                print(objs)
-                print(xmps)
+        pdf = BinaryPdfForensics(filepath+filename, '')
+        version = pdf.pdf_magic()[1]
+        worksheet.write(row, 10, version)
+        objs_dict = pdf.get_info_obj()[1].values()
+        xmps_dict = pdf.get_xmp_obj()[1].values()
+        try:
+            objs_decoded = ','.join(set([i.decode().replace(r'\000', '') for i in objs_dict]))
+        except UnicodeDecodeError:
+            objs_decoded = ''
+        xmps = ','.join(set([binary_string(i) for i in xmps_dict]))
+        objs = ','.join(set([binary_string(i) for i in objs_dict]))
+        with open(filepath + filename, "rb") as f:
+            pdf_toread = PdfFileReader(f, strict=False)
+            pdf_info = pdf_toread.getDocumentInfo()
             for prop_xref, prop_xmp, index in zip(['/Title', '/Author', '/Subject', '/CreationDate', '/ModDate',
                '/Producer', "/Creator", '/Keywords'], ['Title', 'Author', 'Subject', 'CreateDate', 'ModifyDate',
                'Producer', 'CreatorTool', 'Keywords'], [2, 3, 4, 5, 6, 8, 9, 11]):
                 try:
+                    try:
+                        to_write = [pdf_info[prop_xref].decode('unicode_escape')]
+                    except:
+                        to_write = [pdf_info[prop_xref]]
+                    # print(to_write)
+                except Exception as e:
+                    to_write = []
+                if not to_write:
                     regexref = fr'(?<={prop_xref})\s*\([^()]+(?=\))'
                     regexmp = fr'(?<={prop_xmp}>)[^</]+(?=</)'
-                    # match_ = re.match(regexref, f'{prop_xref}\s*(hjd)')
-                    # print(match_)
-                    to_write = set(re.findall(regexref, f'{objs} {objs_decoded}')).union(set(re.findall(regexmp, xmps)))
+                    to_write = set(re.findall(regexref, f'{objs} {objs_decoded}')).union(
+                        set(re.findall(regexmp, xmps)))
                     to_write = [i.strip().strip("(") for i in to_write]
-                    if filename[:9] == 'Відомості' and to_write: print(''.join(to_write))
-                    if index not in [5, 6]:
-                        worksheet.write(row, index, ''.join(to_write))
-                    else:
-                        worksheet.write(row, index, ''.join(list(format_date(to_write))))
-                except Exception as e:
-                    exc = e
+                if not to_write: to_write = ['-']
+                if index not in [5, 6]:
+                    worksheet.write(row, index, ''.join(to_write))
+                else:
+                    worksheet.write(row, index, ''.join(list(format_date(to_write))))
     except Exception as e:
         print(e, traceback.print_exc())
+
 
 functions = {
         '.pdf': pdf_metadata,
@@ -130,14 +134,14 @@ def write_metadata(fpath, fname, worksheet, row):
     :param row: row number in worksheet for current file
     :return: row number for next file
     """
-    if not os.path.exists(f'.{SLASH}.tmp'):
-        os.mkdir(f'.{SLASH}.tmp')
+    if not os.path.exists(f'{fpath}tmp'):
+        os.mkdir(f'{fpath}tmp')
     archive = True
     ext = str(os.path.splitext(fname)[1]).lower()
     if ext == '':
         os.rename(f'{fpath}{fname}', f'{fpath}{fname}.zip')
         try:
-            extract_archive(f'{fpath}{fname}.zip', outdir=f'.{SLASH}.tmp', verbosity=-1)
+            extract_archive(f'{fpath}{fname}.zip', outdir=f'{fpath}tmp', verbosity=-1)
         except:
             archive = False
         os.rename(f'{fpath}{fname}.zip', f'{fpath}{fname}')
@@ -147,7 +151,7 @@ def write_metadata(fpath, fname, worksheet, row):
         # rarfile.RarFile(f'{fpath}{fname}').extractall(f'.{SLASH}.tmp')
     elif ext[:4] not in ['.pdf', '.doc', '.jpg', '.png', '.jpe', '.txt', '.htm', '.csv', '.xls', '.ppt']:
         try:
-            extract_archive(f'{fpath}{fname}', outdir=f'.{SLASH}.tmp', verbosity=-1)
+            extract_archive(f'{fpath}{fname}', outdir=f'{fpath}tmp', verbosity=-1)
         except:
             archive = False
     else:
