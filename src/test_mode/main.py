@@ -129,7 +129,8 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_lis
             for filename in filenames:
                 copyfile(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}',
                          f'{participant_path}{filename[0]}{SLASH}{filename[1]}')
-            copyfile(f'{tmpdirname}{SLASH}{csvname}', f'{participant_path}{csvname}')
+            if save_m:
+                copyfile(f'{tmpdirname}{SLASH}{csvname}', f'{participant_path}{csvname}')
 
 
 def download_files(response):
