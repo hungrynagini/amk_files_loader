@@ -73,18 +73,30 @@ def download_files(response):
     :param response: request response json object that contains all tender information
     :return:
     """
-    try:
+    if True:
         lots_list = []
         if 'lots' in response['data'].keys():
             lots = response['data']['lots']
             for lot in lots:
                 lot_title = lot['title']
                 for rep in INVALID_CHARS:
-                    lot_title = lot_title.replace(rep, "_")
-                lot_title = lot_title.replace("\"", "'")
+                    lot_title = lot_title.replace(rep[0], rep[1])
+                lot_title = lot_title.replace("\"", "'")[:222]
                 path_of_lot = folder + SLASH + lot_title + " " + lot['id']
-                os.mkdir(path_of_lot)  # folder of lot inside tender
+                os.mkdir(path_of_lot)
+                # done_ = False
+                # n = 0
+                # while not done_:
+                #     try:
+                #         os.mkdir(path_of_lot)  # folder of lot inside tender
+                #         done_ = True
+                #         print(path_of_lot)
+                #     except:
+                #         n += 1
+                #         path_of_lot = folder + SLASH + lot_title[:-1] + " " + lot['id']
+                #         lot_title = lot_title[:-1]
                 lots_list.append([lot['id'], lot_title, False])
+                # print(len(lot_title[:222]+lot['id']), folder + SLASH + lot_title[:222] + " " + lot['id'])
         else:
             lots = False
 
@@ -113,7 +125,7 @@ def download_files(response):
                             lot_id = lot['relatedLot']
                             lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
                             for rep in INVALID_CHARS:
-                                lot = lot.replace(rep, "_")
+                                lot = lot.replace(rep[0], rep[1])
                             lot = lot.replace("\"", "'") + SLASH
                             nonempty_lots.append(folder + SLASH + lot)
                             lot_paths.append(lot)
@@ -123,7 +135,7 @@ def download_files(response):
                     # participant = f'{bids[i]["tenderers"][0]["name"]} {bids[i]["tenderers"][0]["identifier"]["id"]}'
                     participant = bids[i]["tenderers"][0]["identifier"]["id"]
                     # for rep in INVALID_CHARS:
-                    #     participant = participant.replace(rep, "_")
+                    #     participant = participant.replace(rep[0], rep[1])
                     # participant = participant.replace("\"", "'")
                     if 'documents' in bids[i].keys():
                         docs = bids[i]['documents']
@@ -143,41 +155,30 @@ def download_files(response):
                             return False
                         filename = doc['title']
                         for rep in INVALID_CHARS:
-                            filename = filename.replace(rep, "_")
+                            filename = filename.replace(rep[0], rep[1])
                         filename = filename.replace("\"", "'")
-                        # docs_done += 1
-                        if filename != "sign.p7s": #and (filename.endswith('zip') or filename.endswith("rar")):
-                            # print(filename)
+                        if filename != "sign.p7s":
                             docs_done += 1
                             filenames.append(filename)
                             if filenames.count(filename) > 1:
                                 filename = str(filenames.count(filename) - 1) + " " + filename
                                 filenames.append(filename)
-                            er = 'error getting request from url'
-                            er2 = '\n Папка може містити неповну інформацію.'
-                            # try:
                             r = requests_get(doc['url'], allow_redirects=True)
                             with open(f'{folder}{SLASH}{filename}', 'wb') as file_:
                                 file_.write(r.content)
-                            er = "error fetching metadata"
                             if save_m:
                                 row = write_metadata(f'{folder}{SLASH}', filename, worksheet, row)
                                 er = 'error deleting temporary files'
                                 remove_folder(f'.{SLASH}.tmp')
-                            # except:
-                            #     messagebox.showinfo("Виникла помилка",
-                            #                         er+er2)
                     if save_m:
                         workbook.close()
                         filenames = list(set(filenames + [f'Значення атрибутів файлів пропозиції {index}.xlsx']))
                     for lot in lot_paths:
                         participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
-                        # print(lot + str(i) + " " + participant)
                         if not os.path.exists(participant_path):
                             os.mkdir(participant_path)  # folder of bidder inside lot
                         for filename in filenames:
                             copyfile(f'{folder}{SLASH}{filename}', f'{participant_path}{filename}')
-                    # sleep(1)
                     for filename in filenames:
                         if filename != "sign.p7s":
                             try:
@@ -193,9 +194,9 @@ def download_files(response):
                     if i not in nonempty_lots:
                         os.rmdir(i)
 
-    except Exception as e:
-        print(e)
-        messagebox.showinfo("Помилка", e)
+    # except Exception as e:
+    #     print(e)
+    #     messagebox.showinfo("Помилка", e)
 
 
 def rClicker(e):
@@ -266,7 +267,7 @@ def ok_button(event=None):
                 # orderer = ''
                 # orderer = response['data']['procuringEntity']['name']
                 # for rep in INVALID_CHARS:
-                #     orderer = orderer.replace(rep, '_')
+                #     orderer = orderer.replace(rep[0], rep[1])
                 # orderer = orderer.replace("\"", "'")
                 # folder = f'{f_path}{SLASH}{orderer} {tenderId}'
                 folder = f'{f_path}{SLASH}{tenderId}'
