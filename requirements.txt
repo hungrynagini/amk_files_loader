@@ -4,3 +4,4 @@ requests
 tkinter
 xlsxwriter
 xml
+olefile
