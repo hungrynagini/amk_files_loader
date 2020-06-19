@@ -15,6 +15,20 @@ from xlsxwriter import Workbook
 from requests import get as requests_get
 
 
+def docs_present(i, bids):
+    docs_num = 0
+    if 'documents' in bids[i].keys():
+        docs = bids[i]['documents']
+        if 'financialDocuments' in bids[i].keys():
+            docs += bids[i]['financialDocuments']
+        if 'eligibilityDocuments' in bids[i].keys():
+            docs += bids[i]['eligibilityDocuments']
+        if 'qualification_documents' in bids[i].keys():
+            docs += bids[i]['qualification_documents']
+        docs_num = sum([1 for i in docs if i['title'] != 'sign.p7s'])
+    return docs_num
+
+
 def run_checks(response):
     """
     Function checks whether the tender has documents to download.
@@ -27,12 +41,10 @@ def run_checks(response):
         bids = response['data']['bids']
         no_docs = True
         for i in range(len(bids)):
-            if 'documents' in bids[i].keys():
-                docs = bids[i]['documents']
-                docs_num = sum([1 for i in docs if i['title'] != 'sign.p7s'])
-                if docs_num > 0:
-                    no_docs = False
-                    docs_number += docs_num
+            docs_num = docs_present(i, bids)
+            if docs_num > 0:
+                no_docs = False
+                docs_number += docs_num
         if no_docs:
             messagebox.showinfo("Відсутні файли", "У тендері відсутні файли пропозиції.")
             remove_folder(folder)
@@ -66,13 +78,13 @@ def run_progress_bar(response):
     window.destroy()
 
 
-def bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_list):
+def bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, lots_list):
     global docs_done
-    if bids[i]['status'] != 'invalid':
+    if bids[i]['status'] not in ['invalid', 'deleted']:
         lot_paths = []
         if save_m:
-            index = ''.join(choice(ascii_letters + digits) for _ in range(10))
-            csvname = f'Значення атрибутів файлів пропозиції {index}.xlsx'
+            index_csv = ''.join(choice(ascii_letters + digits) for _ in range(10))
+            csvname = f'Значення атрибутів файлів пропозиції {index_csv}.xlsx'
             workbook = Workbook(f'{tmpdirname}{SLASH}{csvname}')
             worksheet = workbook.add_worksheet()
             worksheet.write_row(0, 0, METADATA)
@@ -120,7 +132,7 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_lis
         if save_m:
             workbook.close()
         for lot in lot_paths:
-            participant_path = f'{folder}{SLASH}{lot}{str(i)} {participant}{SLASH}'
+            participant_path = f'{folder}{SLASH}{lot}{str(index)} {participant}{SLASH}'
             if not os.path.exists(participant_path):
                 os.mkdir(participant_path)  # folder of bidder inside lot
                 os.mkdir(f'{participant_path}Актуальні{SLASH}')
@@ -158,17 +170,18 @@ def download_files(response):
             bids = response['data']['bids']
             bids_with_docs = []
             for i in range(len(bids)):
-                if 'documents' in bids[i].keys():
-                    docs = bids[i]['documents']
-                    if False in [i['title'] == 'sign.p7s' for i in docs]:
-                        bids_with_docs.append(i)
+                docs_n = docs_present(i, bids)
+                if docs_n:
+                    bids_with_docs.append(i)
             save_m = save_meta.get()
+            index = 0
             for i in bids_with_docs:
                 with TemporaryDirectory(dir=folder) as tmpdirname:
                     os.mkdir(f'{tmpdirname}{SLASH}Актуальні')
                     os.mkdir(f'{tmpdirname}{SLASH}Видалені')
-                    bid_files(bids, lots, tmpdirname, folder, save_m, i, nonempty_lots, lots_list)
+                    bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, lots_list)
                     sleep(2)
+                    index += 1
             docs_done += 1
             if lots:
                 lots_all = [os.path.join(folder, o) + SLASH for o in os.listdir(folder)
