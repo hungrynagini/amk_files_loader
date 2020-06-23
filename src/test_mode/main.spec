@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['main.py'],
-             pathex=['C:\\Users\\asus\\Desktop\\prozorro\\venv\\Lib\\site-packages', 'C:\\Users\\asus\\Desktop\\prozorro\\amk_files_loader-master\\src\\test_mode'],
+             pathex=['C:\\Users\\asus\\Desktop\\prozorro\\amk_files_loader-master\\src\\test_mode'],
              binaries=[],
              datas=[],
              hiddenimports=['patool', 'PyPDF2', 'patoolib.programs.p7zip', 'patoolib.programs.py_zipfile', 'patoolib.programs.rar', 'patoolib.programs.unrar'],

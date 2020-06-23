@@ -15,45 +15,35 @@ from xlsxwriter import Workbook
 from requests import get as requests_get
 
 
-def docs_present(i, bids):
-    docs_num = 0
-    if 'documents' in bids[i].keys():
-        docs = bids[i]['documents']
-        if 'financialDocuments' in bids[i].keys():
-            docs += bids[i]['financialDocuments']
-        if 'eligibilityDocuments' in bids[i].keys():
-            docs += bids[i]['eligibilityDocuments']
-        if 'qualification_documents' in bids[i].keys():
-            docs += bids[i]['qualification_documents']
-        docs_num = sum([1 for i in docs if i['title'] != 'sign.p7s'])
-    return docs_num
-
-
 def run_checks(response):
     """
     Function checks whether the tender has documents to download.
     Also it saves the number of files that will be downloaded.
     :return: boolean
     """
-    global docs_number
-    docs_number = 0
-    if 'bids' in response['data'].keys():
-        bids = response['data']['bids']
-        no_docs = True
-        for i in range(len(bids)):
-            docs_num = docs_present(i, bids)
-            if docs_num > 0:
-                no_docs = False
-                docs_number += docs_num
-        if no_docs:
-            messagebox.showinfo("Відсутні файли", "У тендері відсутні файли пропозиції.")
+    try:
+        global docs_number
+        docs_number = 0
+        if 'bids' in response['data'].keys():
+            bids = response['data']['bids']
+            no_docs = True
+            for i in range(len(bids)):
+                docs_num, _ = docs_present(bids[i])
+                if docs_num > 0:
+                    no_docs = False
+                    docs_number += docs_num
+            if no_docs:
+                messagebox.showinfo("Відсутні файли", "У тендері відсутні файли пропозиції.")
+                remove_folder(folder)
+                return False
+        else:
+            messagebox.showinfo("Відсутні пропозиції", "У тендері відсутні пропозиції.")
             remove_folder(folder)
             return False
-    else:
-        messagebox.showinfo("Відсутні пропозиції", "У тендері відсутні пропозиції.")
-        remove_folder(folder)
-        return False
-    return True
+        return True
+    except Exception as e:
+        messagebox.showinfo("Помилка", e)
+        print('run checks', e, traceback.print_exc())
 
 
 def run_progress_bar(response):
@@ -61,26 +51,30 @@ def run_progress_bar(response):
     Runs the interface for progress bar, updating number of files.
     :return:
     """
-    global docs_done
-    docs_done = 0
-    th = Thread(target=lambda: download_files(response))
-    th.start()
-    while docs_done < docs_number - 1:
-        progress['value'] = (docs_done / docs_number) * 100
-        docs_label['text'] = 'Завантажено: {} з {}'.format(docs_done, docs_number)
-        window.update()
-        sleep(1)
-    while docs_done < docs_number:
-        docs_label['text'] = 'Завершення роботи ...'
-        window.update()
-        sleep(1)
-    th.join()
-    window.destroy()
+    try:
+        global docs_done
+        docs_done = 0
+        th = Thread(target=lambda: download_files(response))
+        th.start()
+        while docs_done < docs_number - 1:
+            progress['value'] = (docs_done / docs_number) * 100
+            docs_label['text'] = 'Завантажено: {} з {}'.format(docs_done, docs_number)
+            window.update()
+            sleep(1)
+        while docs_done < docs_number:
+            docs_label['text'] = 'Завершення роботи ...'
+            window.update()
+            sleep(1)
+        th.join()
+        window.destroy()
+    except Exception as e:
+        messagebox.showinfo("Помилка", e)
+        print('run progress', e, traceback.print_exc())
 
 
-def bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, lots_list):
-    global docs_done
-    if bids[i]['status'] not in ['invalid', 'deleted']:
+def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonempty_lots, lots_list, qualifications):
+    try:
+        global docs_done
         lot_paths = []
         if save_m:
             index_csv = ''.join(choice(ascii_letters + digits) for _ in range(10))
@@ -89,50 +83,58 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, l
             worksheet = workbook.add_worksheet()
             worksheet.write_row(0, 0, METADATA)
         if lots:
-            bid_lot_ids = bids[i]['lotValues']
-            for lot in bid_lot_ids:
-                lot_id = lot['relatedLot']
-                lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
-                lot = replace_invalid_chars(lot) + SLASH
-                nonempty_lots.append(f'{folder}{SLASH}{lot}')
+            try:
+                try:
+                    bid_lot_ids = bids[bid_i]['lotValues']
+                    attr = 'relatedLot'
+                except KeyError as e:
+                    print(e)
+                    bid_lot_ids = [i for i in qualifications if i['bidID'] == bids[bid_i]['id']]
+                    attr = 'lotID'
+                for lot in bid_lot_ids:
+                    lot_id = lot[attr]
+                    lot = f'{[i[1] for i in lots_list if i[0] == lot_id][0]} {lot_id}'
+                    lot = replace_invalid_chars(lot) + SLASH
+                    nonempty_lots.append(f'{folder}{SLASH}{lot}')
+                    lot_paths.append(lot)
+            except KeyError as e:
+                print(e)
+                lot = f'Не вдалось визначити лот{SLASH}'
                 lot_paths.append(lot)
+                nonempty_lots.append(f'{folder}{SLASH}{lot}')
         else:
             lot_paths.append("")
 
         # participant = f'{bids[i]["tenderers"][0]["name"]} {bids[i]["tenderers"][0]["identifier"]["id"]}'
-        participant = bids[i]["tenderers"][0]["identifier"]["id"]
-        if 'documents' in bids[i].keys():
-            docs = bids[i]['documents']
-        else:
-            docs = []
+        participant = bids[bid_i]["tenderers"][0]["identifier"]["id"]
+        _, docs = docs_present(bids[bid_i])
         filenames, dates, ids = [], [], []
         row = 0
         old_files = False
+        urls = []
         for doc in docs:
             if STOP_EXECUTION:
-                for root, dirs, files in os.walk(folder, topdown=False):
-                    for name in files:
-                        os.remove(os.path.join(root, name))
-                    for name in dirs:
-                        os.rmdir(os.path.join(root, name))
-                os.rmdir(folder)
+                remove_folder(folder)
                 return False
             filename = doc['title']
             if filename != "sign.p7s":
-                docs_done += 1
+                urls.append(doc['url'])
                 old_files, filename = append_file(doc, filenames, filename, old_files, dates, ids)
                 # print(old_files)
-                r = requests_get(doc['url'], allow_redirects=True)
-                with open(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}', 'wb') as file_:
-                    file_.write(r.content)
-                if save_m:
-                    row = write_metadata(f'{tmpdirname}{SLASH}', filename[0], filename[1], worksheet,
-                                         row)
-                    remove_folder(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}tmp')
+        # print(len(filenames))
+        for url, id_, date_, filename in zip(urls, ids, dates, filenames):
+            docs_done += 1
+            r = requests_get(url, allow_redirects=True)
+            with open(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}', 'wb') as file_:
+                file_.write(r.content)
+            if save_m:
+                row = write_metadata(f'{tmpdirname}{SLASH}', filename[0], filename[1], worksheet,
+                                     row)
+                remove_folder(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}tmp')
         if save_m:
             workbook.close()
         for lot in lot_paths:
-            participant_path = f'{folder}{SLASH}{lot}{str(index)} {participant}{SLASH}'
+            participant_path = f'{folder}{SLASH}{lot}{str(folder_index)} {participant}{SLASH}'
             if not os.path.exists(participant_path):
                 os.mkdir(participant_path)  # folder of bidder inside lot
                 os.mkdir(f'{participant_path}Актуальні{SLASH}')
@@ -143,6 +145,9 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, l
                          f'{participant_path}{filename[0]}{SLASH}{filename[1]}')
             if save_m:
                 copyfile(f'{tmpdirname}{SLASH}{csvname}', f'{participant_path}{csvname}')
+    except Exception as e:
+        messagebox.showinfo("Помилка", e)
+        print('bid_files', e, traceback.print_exc())
 
 
 def download_files(response):
@@ -153,7 +158,7 @@ def download_files(response):
     """
     try:
         lots_list = []
-        if 'lots' in response['data'].keys():
+        if 'lots' in response['data'].keys() and len(response['data']['lots']) > 1:
             lots = response['data']['lots']
             for lot in lots:
                 lot_title = lot['title']
@@ -170,20 +175,22 @@ def download_files(response):
             bids = response['data']['bids']
             bids_with_docs = []
             for i in range(len(bids)):
-                docs_n = docs_present(i, bids)
-                if docs_n:
-                    bids_with_docs.append(i)
+                if bids[i]['status'] not in ['invalid', 'deleted']:
+                    docs_n, _ = docs_present(bids[i])
+                    if docs_n:
+                        bids_with_docs.append(i)
             save_m = save_meta.get()
-            index = 0
-            for i in bids_with_docs:
+            folder_index = 0
+            for bid_index in bids_with_docs:
                 with TemporaryDirectory(dir=folder) as tmpdirname:
                     os.mkdir(f'{tmpdirname}{SLASH}Актуальні')
                     os.mkdir(f'{tmpdirname}{SLASH}Видалені')
-                    bid_files(bids, lots, tmpdirname, folder, save_m, i, index, nonempty_lots, lots_list)
+                    bid_files(bids, lots, tmpdirname, folder, save_m, bid_index, folder_index, nonempty_lots, lots_list,
+                              response['data']['qualifications'])
                     sleep(2)
-                    index += 1
+                    folder_index += 1
             docs_done += 1
-            if lots:
+            if lots and not STOP_EXECUTION:
                 lots_all = [os.path.join(folder, o) + SLASH for o in os.listdir(folder)
                             if os.path.isdir(os.path.join(folder, o))]
                 for i in lots_all:
@@ -239,51 +246,56 @@ def browse_button(entry):
 
 
 def ok_button(event=None):
-    global folder
-    folder = PREFIX
-    f_path = folder_path.get().strip()
-    if SYSTEM == "Windows":
-        f_path = f'{folder}{f_path.replace("/", SLASH)}'
-    t_id = tender_id.get().strip()
-    if not os.path.exists(f_path):
-        try:
-            os.mkdir(f_path)
-        except:
-            messagebox.showinfo("Невірний шлях", "Неіснуючий шлях.")
-    if os.path.exists(f_path):
-        if not t_id.isalnum() or len(t_id) < 32:
-            messagebox.showinfo("Невірний ID", "Тендер із введеним ID не знайдено.")
-        else:
-            response = requests_get("https://public.api.openprocurement.org/api/2.3/tenders/" + t_id)
-            if response.status_code != 200:
+    try:
+        global folder
+        folder = PREFIX
+        f_path = folder_path.get().strip() + '/'
+        f_path = f_path.replace("///", "/").replace("//", "/")
+        if SYSTEM == "Windows":
+            f_path = f'{folder}{f_path.replace("/", SLASH)}'
+        t_id = tender_id.get().strip()
+        if not os.path.exists(f_path):
+            try:
+                os.mkdir(f_path)
+            except:
+                messagebox.showinfo("Невірний шлях", "Неіснуючий шлях.")
+        if os.path.exists(f_path):
+            if not t_id.isalnum() or len(t_id) < 32:
                 messagebox.showinfo("Невірний ID", "Тендер із введеним ID не знайдено.")
             else:
-                response = response.json()
-                tenderId = response['data']['tenderID']
-                # orderer = response['data']['procuringEntity']['name']
-                # folder = f'{f_path}{SLASH}{orderer} {tenderId}'
-                folder = f'{f_path}{SLASH}{tenderId}'
-                if not os.path.exists(folder):
-                    os.mkdir(folder)  # folder of tender
-                    if run_checks(response):
-                        container.grid_forget()
-                        container2.grid(row=1, column=1)
-                        run_progress_bar(response)
+                response = requests_get("https://public.api.openprocurement.org/api/2.3/tenders/" + t_id)
+                if response.status_code != 200:
+                    messagebox.showinfo("Невірний ID", "Тендер із введеним ID не знайдено.")
                 else:
-                    if run_checks(response):
-                        container.grid_forget()
-                        container2.grid(row=1, column=1)
-                        confirmation_window(response)
+                    response = response.json()
+                    tenderId = response['data']['tenderID']
+                    # orderer = response['data']['procuringEntity']['name']
+                    # folder = f'{f_path}{SLASH}{orderer} {tenderId}'
+                    folder = f'{f_path}{tenderId}'
+                    if not os.path.exists(folder):
+                        os.mkdir(folder)  # folder of tender
+                        if run_checks(response):
+                            container.grid_forget()
+                            container2.grid(row=1, column=1)
+                            run_progress_bar(response)
+                    else:
+                        if run_checks(response):
+                            container.grid_forget()
+                            container2.grid(row=1, column=1)
+                            confirmation_window(response)
+    except Exception as e:
+        messagebox.showinfo("Помилка", e)
+        print('ok button', e, traceback.print_exc())
 
 
 def yes_button(top, response):
-    top.destroy()
-    for root, dirs, files in os.walk(folder, topdown=False):
-        for name in files:
-            os.remove(os.path.join(root, name))
-        for name in dirs:
-            os.rmdir(os.path.join(root, name))
-    run_progress_bar(response)
+    try:
+        top.destroy()
+        remove_folder(folder, False)
+        run_progress_bar(response)
+    except Exception as e:
+        messagebox.showinfo("Помилка", e)
+        print('yes button', e, traceback.print_exc())
 
 
 def no_button(top, stop_execution):
