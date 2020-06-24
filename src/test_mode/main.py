@@ -77,8 +77,7 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonem
         global docs_done
         lot_paths = []
         if save_m:
-            index_csv = ''.join(choice(ascii_letters + digits) for _ in range(10))
-            csvname = f'Значення атрибутів файлів пропозиції {index_csv}.xlsx'
+            csvname = f'Значення атрибутів файлів пропозиції.xlsx'
             workbook = Workbook(f'{tmpdirname}{SLASH}{csvname}')
             worksheet = workbook.add_worksheet()
             worksheet.write_row(0, 0, METADATA)
@@ -89,6 +88,8 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonem
                     attr = 'relatedLot'
                 except KeyError as e:
                     print(e)
+                    if not qualifications:
+                        raise KeyError
                     bid_lot_ids = [i for i in qualifications if i['bidID'] == bids[bid_i]['id']]
                     attr = 'lotID'
                 for lot in bid_lot_ids:
@@ -168,7 +169,9 @@ def download_files(response):
                 lots_list.append([lot['id'], lot_title, False])
         else:
             lots = False
-
+        qualifications = []
+        if 'qualifications' in response['data'].keys():
+            qualifications = response['data']['qualifications']
         if 'bids' in response['data'].keys():
             nonempty_lots = []
             global docs_done
@@ -186,7 +189,7 @@ def download_files(response):
                     os.mkdir(f'{tmpdirname}{SLASH}Актуальні')
                     os.mkdir(f'{tmpdirname}{SLASH}Видалені')
                     bid_files(bids, lots, tmpdirname, folder, save_m, bid_index, folder_index, nonempty_lots, lots_list,
-                              response['data']['qualifications'])
+                              qualifications)
                     sleep(2)
                     folder_index += 1
             docs_done += 1
