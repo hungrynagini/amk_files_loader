@@ -89,7 +89,9 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonem
                 except KeyError as e:
                     print(e)
                     if not qualifications:
-                        raise KeyError
+                        lot = f'Не вдалось визначити лот{SLASH}'
+                        lot_paths.append(lot)
+                        nonempty_lots.append(f'{folder}{SLASH}{lot}')
                     bid_lot_ids = [i for i in qualifications if i['bidID'] == bids[bid_i]['id']]
                     attr = 'lotID'
                 for lot in bid_lot_ids:
@@ -126,6 +128,7 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonem
         for url, id_, date_, filename in zip(urls, ids, dates, filenames):
             docs_done += 1
             r = requests_get(url, allow_redirects=True)
+            # print(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}')
             with open(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}', 'wb') as file_:
                 file_.write(r.content)
             if save_m:
@@ -142,6 +145,7 @@ def bid_files(bids, lots, tmpdirname, folder, save_m, bid_i, folder_index, nonem
                 if old_files:
                     os.mkdir(f'{participant_path}Видалені{SLASH}')
             for filename in filenames:
+                # print(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}')
                 copyfile(f'{tmpdirname}{SLASH}{filename[0]}{SLASH}{filename[1]}',
                          f'{participant_path}{filename[0]}{SLASH}{filename[1]}')
             if save_m:

@@ -248,13 +248,14 @@ def run_func(file, *arg):
     functions[file](*arg)
 
 
-def extract_any_archive(fpath, fname, archive=False):
+def extract_any_archive(fpath, fname, archive=False, appended=False):
     ext = str(os.path.splitext(fname)[1]).lower()
     if not os.path.exists(f'{fpath}tmp'):
         os.mkdir(f'{fpath}tmp')
     if ext == '':
         os.rename(f'{fpath}{fname}', f'{fpath}{fname}.zip')
         fname += '.zip'
+        appended = True
     if ext[:4] not in ['.pdf', '.doc', '.jpg', '.png', '.jpe', '.txt', '.htm', '.csv', '.xls', '.ppt', '.p7s', '.tiff']:
         try:
             extract_archive(f'{fpath}{fname}', outdir=f'{fpath}tmp', verbosity=-1)
@@ -265,7 +266,8 @@ def extract_any_archive(fpath, fname, archive=False):
         except Exception as e:
             print(e)
             # print(fname, e)
-            # os.rename(f'{fpath}{fname}.zip', f'{fpath}{fname}')
+    if appended:
+        os.rename(f'{fpath}{fname}', f'{fpath}{fname[:-4]}')
     return archive
 
 
